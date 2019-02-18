@@ -1,0 +1,152 @@
+---
+title: "Final Project"
+output: pdf_document
+author: Yi Rong, Zhenyue Tan, Zhengyu Li
+---
+#Introduction
+
+##Statement of goals
+In this project, we are trying to figure out factors impacting on housing price. Housing price is a popular topic in modern society. People want to know how much they should pay for their housing and how much they can get if they want to do investment on a house. The price of a house depends on its size, quality, age, etc. We hope to use our project to let people know what factors have most important impact on price and help them make better choices on their housing options.
+
+In our group opinion, the most important factor should be age (year built).In this project, we would firstly do research on the relationship between housing price and age. However,there may be some other factors impacting on housing price so we would also do further research on other factors.
+
+##Description of Data
+Our data came from Modern Regression class(2015 fall) in Carnegie Mellon University (www.stat.cmu.edu/~cshalizi/mreg/15).
+It is a sample data for class project. There are 522 observations in this data. It includes 12 variables(ID,Price,Sqft,Bedroom,Bathroom,Airconditioning,Garage,Pool,YearBuild,Quality,Lot and AdjHighway ).
+
+To decide what factors should be included in our research, we firstly do ScatterPlot.In the ScatterPlot, we excluded some variables that we didn't think important so there are only six variables shown in ScatterPlot.
+
+
+```{r,echo=FALSE,warning=FALSE}
+setwd("/Users/zhengyuli/Downloads")
+re = read.csv("real-estate.csv",header=TRUE)
+library(ggplot2)
+library(GGally)
+library(knitr)
+library(broom)
+library(boot)
+```
+
+##EDA
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=5}
+ggpairs(re, columns=c('Price','Sqft','Bedroom','Bathroom','YearBuild','Lot'),title = 'Adjusting Variables')
+```
+
+Based on the plot above, we could find that, apart from YearBuild, Sqft and Bathroom have very large correlations. It means that, apart from YearBuild, Sqft and the number of bathroom also have important impacts on housing price. To look at the scatter plot, points fall like straight lines in Price-Sqft plot and Price-Batheroom plot.
+
+So, we would include three factors in our model, YearBuild, Sqft and Bathroom. We would use Price as dependent variable.
+
+
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=3}
+ggplot(re, aes(x=YearBuild, y=Price)) + geom_point()  + geom_smooth(method = 'loess',method.args=list(degree=1))+ geom_smooth(method="glm",color="red")
+```
+
+
+Based on the plot above, we could see that from the blue line which we use simply linear regression forms curvy. Compared to the blue line, the red line which we use logitic regression forms straightly. Moreover, we could see that points sepeartly on the right side and not focus on the same area.So we would use log for the dependednt variable to fix the problem.
+
+
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=3}
+ggplot(re, aes(x=YearBuild, y=log(Price))) + geom_point()  + geom_smooth(method = 'loess',method.args=list(degree=1))+ geom_smooth(method="glm",color="red")
+```
+
+
+After log Price, we could see from the plot that all the points are more focus on the center and there are less outliers. Logistic regression forms better linear relation between yearbuid and log(Price) than the simple linear regression. So we would use log as our transformation for dependent variable.To explore more details of yearbuild, we would like to do time series to figure out whether yearbuild has certain cycles.
+
+
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=5}
+re.lo = loess(Price~YearBuild, degree=1, data=re)
+re.lo.df = augment(re.lo)
+re.lo2 = loess(.resid~YearBuild, span=0.25, data=re.lo.df)
+re.lo2.df = augment(re.lo2)
+names(re.lo2.df)=c(".resid","year",".fitted",".se.fit",".resid2")
+Year = re$YearBuild
+Trend = re.lo.df$.fitted - mean(re.lo.df$.fitted)
+Oscillatory = re.lo2.df$.fitted
+Residuals = re.lo2.df$.resid2
+re.ts = data.frame(Year, Trend, Oscillatory, Residuals)
+library(tidyr)
+re.ts.long = re.ts %>% gather(type, Incidence, Trend:Residuals)
+re.ts.long$type = factor(re.ts.long$type, levels=c("Trend", "Oscillatory", "Residuals"))
+ggplot(re.ts.long, aes(x=Year, y=Incidence)) + geom_point()  + facet_grid(~type)
+```
+
+
+From the time series, we could see that year trend is slowly increasing for those years. Moreover, we could see from the oscillatory plot, before 1980 the price changes slowly than after 1980. Since there is not a clearly patten for the changing cycles for the year. We think time series is not suitable for this project. However, we would like to see whether other factors would have impact on the price.
+
+
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=6}
+year = rep(NA,nrow(re))
+year[re$YearBuild>1980]="1980-"
+year[re$YearBuild<=1980]="1900-1980"
+ggplot(re, aes(x=Sqft, y=Price,color=year))+ geom_point() + geom_smooth(span=1, method.args=list(degree=1)) + facet_wrap(~Bathroom)
+```
+
+
+Relying on this plot, we figure out it a little bit crowded. It may not be a good idea to put all the important variable together. We need to separate them into two plots in the following plots. There are still some information we can get from it. Most of the house having 3 bathroom or more were built before 1980. Most of the data are following an increasing trend. No matter how many bathrooms in the house, when the square feet increases, the price will increase.
+
+
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=6}
+ggplot(re, aes(x=YearBuild, y=log(Price)))+ geom_point() + geom_smooth(span=1, method.args=list(degree=1)) + facet_wrap(~cut_number(Sqft,n=6),ncol=3)
+```
+
+
+Based on this plot, it is clear to see that how do prices change during 1900-2000 split by 6 levels of square feet of houses. In the middle level of square feet, most of the data are following linear patterns well. It is a positive linear relationship between price and yearbuild. If the house is new built, the price will increase in each level of square feet. Otherwise, the patterns of smallest and largest square feet are a little bit right skewed. We considered to do a log transform to the square feet variable.
+
+
+```{r,echo=FALSE, warning=FALSE,fig.width=6, fig.height=6}
+re.lm.im=lm(log(Price)~YearBuild+factor(Bathroom),data=re)
+re.grid = expand.grid(Bathroom=c(1:5),YearBuild=c(1920,1940,1960,1980,2000))
+                      
+re.predict = predict(re.lm.im, newdata=re.grid)
+
+ggplot(data.frame(re.grid, Price=as.vector(re.predict)), aes(x=YearBuild, y=Price, group=Bathroom, color=factor(Bathroom))) + geom_line()+ggtitle("Price vs YearBuild split by number of bathrooms")
+```
+
+
+There are only two houses having more than 5 bathrooms. We decide to focus on the houses having less than 6 bathrooms. According to this plot, it reveals that how do the prices change during 1920-2000 separated by the number of bathrooms. It is clear that when the number of bathrooms increases, the price will increase.
+
+##Model Selection
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=3}
+re.lm=lm(log(Price)~YearBuild+Sqft+factor(Bathroom),data=re)
+re.fitted = fitted.values(re.lm)
+re.resid = residuals(re.lm)
+re.lm.df = data.frame(re,.fitted = re.fitted,.resid = re.resid)
+ggplot(re.lm.df,aes(x=.fitted,y = .resid))+ geom_point()+geom_smooth(span = 1, method.args = list(degree = 1))
+```
+
+
+Firstly, we did log transformation on price since the price vs Yearbuild plot looks right skewed. It seems like the residual plot is not too bad. However, we have some outliers outside[-0.5, 0.5]. We will try to figure this out.
+
+
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=3}
+re.lm=lm(log(Price)~YearBuild+log(Sqft)+factor(Bathroom),data=re)
+re.fitted = fitted.values(re.lm)
+re.resid = residuals(re.lm)
+re.lm.df = data.frame(re,.fitted = re.fitted,.resid = re.resid)
+ggplot(re.lm.df,aes(x=.fitted,y = .resid))+ geom_point()+geom_smooth(span = 1, method.args = list(degree = 1))
+```
+
+
+Then we did log transformation on both price and square feet. Tehre are only two obvious outliers. The data looks more concentrated around the horizontal line across 0. It indicates that this model is better than the previous one. So we consider it as our final model.
+
+#Final Model
+```{r,echo=FALSE,warning=FALSE,fig.width=6, fig.height=3}
+re.glm=glm(log(Price)~YearBuild+log(Sqft)+factor(Bathroom),data=re)
+re.gfitted = fitted.values(re.glm)
+re.gresid = residuals(re.glm)
+re.glm.df = data.frame(re,.fitted = re.gfitted,.resid = re.gresid)
+ggplot(re.glm.df,aes(x=.fitted,y = .resid))+ geom_point()+geom_smooth(span = 1, method.args = list(degree = 1))
+kable(coefficients(summary(re.glm),digits=3))
+```
+
+From the residual plot, we could see after using logistic regression, the line is more flat than before. And this line is more close to zero which gives us a better fit than before. And from the coefficients table, we can see the influence of different factors to price. Compared to other bathrooms number, three to five bathrooms would have higher housing price.
+
+#Fitted model
+```{r,echo = FALSE, warning=FALSE,fig.width=6, fig.height=5}
+glm.grid=expand.grid(YearBuild=c(1900,1920,1940,1960,1980,2000),Bathroom=c(0:2,3:5,6:7),Sqft=seq(6.5,8.5,0.5))
+glm.predict=predict(re.glm,newdata=glm.grid)
+glm.plot.df=data.frame(glm.grid,fit=as.vector(glm.predict))
+ggplot(glm.plot.df,aes(x=YearBuild,y=fit,color=Bathroom))+geom_point()+facet_wrap(~Sqft)
+```
+
+From the fit plot, we could see that if the number of bathrooms is larger than 5, fit is lower. We can also figure out that more recent the houses built, fit becomes higher. There is no much difference between squre feet.
